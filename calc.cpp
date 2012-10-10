@@ -26,7 +26,10 @@ typedef enum {
 	T_store, 	// 6: -> 
 	T_openparen,	// 7: (
 	T_closeparen, 	// 8: )
-	T_div		// 9: /
+	T_div,		// 9: /
+	T_m,		// 10: m
+	T_openbracket,	// 11: [
+	T_closebracket	// 12: ]
 } token_type;
 
 //this function returns a string for the token.  It is used in the parsetree_t
@@ -47,6 +50,9 @@ char* token_to_string(token_type c) {
 		case T_openparen: strncpy(buffer,"(",MAX_SYMBOL_NAME_SIZE); break;
 		case T_closeparen: strncpy(buffer,")",MAX_SYMBOL_NAME_SIZE); break;
                 case T_div: strncpy(buffer,"/",MAX_SYMBOL_NAME_SIZE); break;
+		case T_m: strncpy(buffer,"m",MAX_SYMBOL_NAME_SIZE); break;
+		case T_openbracket: strncpy(buffer,"[",MAX_SYMBOL_NAME_SIZE); break;
+		case T_closebracket: strncpy(buffer,"]",MAX_SYMBOL_NAME_SIZE); break;
 		default: strncpy(buffer,"unknown_token",MAX_SYMBOL_NAME_SIZE); break;
 	}
 	return buffer;
@@ -172,7 +178,8 @@ token_type scanner_t::next_token()
 				use_last_char = true;
 			}
 			break;
-		case '0': //ask about leading zeros (i.e. is 01 a num?)
+		case '0': //on 10/9 after class prof said we could decide whether
+			  //to accept leading zeros or not as valid numbers
 		case '1':
 		case '2':
 		case '3':
