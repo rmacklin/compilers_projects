@@ -105,6 +105,13 @@ class scanner_t {
 	//characters one at a time (using getchar would be a good way)
 	//and group them into tokens.
 	int line;
+	int last_char_read;
+	bool use_last_char;
+	token_type* next_token_type;
+
+	//Reads in the next character using getchar and keeps track of
+	//the number of newlines that have been read
+	int read_char();
 
 	//error message and exit for unrecognized character
 	void scan_error(char x);
@@ -125,6 +132,67 @@ token_type scanner_t::next_token()
 	//multiple times without actually reading any more tokens in 
 	if ( bogo_token!=T_plus && bogo_token!=T_eof ) return T_plus;
 	else return bogo_token;
+
+	if ( next_token_type != NULL)    //we already looked at the next token,
+		return *next_token_type; //so just return the same thing
+
+	next_token_type = new token_type();
+	//If we are here, we haven't looked at the next token yet, so we
+	//must read characters until we know what the token is.
+	/*TODO: 
+		Call read_char and check for the simple ones first (eof,
+ 		+,*,.,(,),/ then the harder ones: -, -> then the
+		hardest: num and figure out what the token is. Allocate
+		memory to store the string and store it in next_token_str  */
+	char c, d;
+	c = (use_last_char ? last_char_read : read_char());
+	while(isspace(c)) { c = read_char(); }
+	use_last_char = false;
+	// c should now be the first non-whitespace character of the
+	// next token
+	switch(c) {
+		case '+': *next_token_type = T_plus; break;
+		case '*': *next_token_type = T_times; break;
+		case '.': *next_token_type = T_period; break;
+		case '(': *next_token_type = T_openparen; break;
+		case ')': *next_token_type = T_closeparen; break;
+		case '/': *next_token_type = T_div; break;
+		case '-': // could be - or ->
+			d = read_char();
+			if(d == '>')
+				*next_token_type = T_store;
+			else
+			{
+				*next_token_type = T_minus;
+				//we looked at an extra character that
+				//wasn't part of this token, so we should
+				//consider it as the first character of
+				//the next token
+				last_char_read = d;
+				use_last_char = true;
+			}
+			break;
+		case '0': //ask about leading zeros (i.e. is 01 a num?)
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9': //keep checking next char until it's not a digit
+			*next_token_type = T_num;
+			char num_string[MAX_SYMBOL_NAME_SIZE];
+			int i = 0;
+			do {
+				strncpy(num_string+i, &c, MAX_SYMBOL_NAME_SIZE);
+				c = read_char();
+				i++;
+			} while(c >= '0' && c <= '9' && i < 25);
+			//eventually call atoi on num_string to get
+			//the actual number associated with this token
+	}
 }
 
 void scanner_t::eat_token(token_type c)
@@ -137,12 +205,20 @@ void scanner_t::eat_token(token_type c)
 	if ( rand()%10 < 8 ) bogo_token = T_plus;
 	else bogo_token = T_eof;
 
+	//We just ate the token, so we have to call next_token() again
+	//to know what's next. Thus, we set next_token_type to NULL (it
+	//will be set to the next token type in the next call of
+	//next_token() )
+	delete next_token_type;
+	next_token_type = NULL;
 }
 
 scanner_t::scanner_t()
 {
 	//WRITEME
 	line = 1;
+	next_token_type = NULL;
+	use_last_char = false;
 }
 
 int scanner_t::get_line()
@@ -150,6 +226,15 @@ int scanner_t::get_line()
 	//WRITEME
 	return line;
 }
+
+int scanner_t::read_char()
+{
+	char c;
+	c = getchar();
+	if ( c == '\n') line++;
+	return c;
+}
+
 
 void scanner_t::scan_error (char x)
 {
