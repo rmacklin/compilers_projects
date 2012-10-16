@@ -7,6 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stack>
+#include <math.h>
 
 using namespace std;
 
@@ -14,6 +15,7 @@ using namespace std;
 /*** Enums and Print Functions for Terminals and Non-Terminals  **********************/
 
 #define MAX_SYMBOL_NAME_SIZE 25
+#define MAX_DIGITS_IN_INT 10
 
 //all of the terminals in the language
 typedef enum {
@@ -65,8 +67,15 @@ char* token_to_string(token_type c) {
 typedef enum {
 	epsilon = 100,
 	NT_List,
-	NT_Expr
+	NT_Expr,
 	//WRITEME: add symbolic names for you non-terminals here
+	NT_ListPrime,
+	NT_Cmd,
+	NT_Args,
+	NT_ExprPrime,
+	NT_Term,
+	NT_TermPrime,
+	NT_Factor
 } nonterm_type;
 
 //this function returns a string for the non-terminals.  It is used in the parsetree_t
@@ -78,11 +87,19 @@ char* nonterm_to_string(nonterm_type nt)
 {
 	static char buffer[MAX_SYMBOL_NAME_SIZE];
 	switch( nt ) {
-		  case epsilon: strncpy(buffer,"e",MAX_SYMBOL_NAME_SIZE); break;
-		  case NT_List: strncpy(buffer,"List",MAX_SYMBOL_NAME_SIZE); break;
-		  //WRITEME: add the other nonterminals you need here		
-		  default: strncpy(buffer,"unknown_nonterm",MAX_SYMBOL_NAME_SIZE); break;
-		}
+		case epsilon: strncpy(buffer,"e",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_List: strncpy(buffer,"List",MAX_SYMBOL_NAME_SIZE); break;
+		//WRITEME: add the other nonterminals you need here		
+		case NT_Expr: strncpy(buffer,"Expr",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_ListPrime: strncpy(buffer,"List'",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_Cmd: strncpy(buffer,"Cmd",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_Args: strncpy(buffer,"Args",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_ExprPrime: strncpy(buffer,"Expr'",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_Term: strncpy(buffer,"Term",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_TermPrime: strncpy(buffer,"Term'",MAX_SYMBOL_NAME_SIZE); break;
+		case NT_Factor: strncpy(buffer,"Factor",MAX_SYMBOL_NAME_SIZE); break;
+		default: strncpy(buffer,"unknown_nonterm",MAX_SYMBOL_NAME_SIZE); break;
+	}
 	return buffer;
 }
 
@@ -100,9 +117,20 @@ class scanner_t {
 	//return line number for errors
 	int get_line();
 
+	//returns the last number read (to be used after eating a T_num
+	//in order to get its value). It will be negative if a number
+	//has not been read since our numbers must be positive
+	int get_num();
+
 	//constructor 
 	scanner_t();
 
+	//helper function that takes a string representation of a 10-digit
+	//integer and returns true if the integer is greater than 2^31 -1
+	//(10 is the maximum number of digits in a 32-bit integer; for all
+	//other lengths, we *automatically* know whether or not the integer
+	//is less than 2^31 - 1)
+	bool out_of_range(char* num_string);
   private:
 
 	//WRITEME: Figure out what you will need to write the scanner
@@ -114,6 +142,7 @@ class scanner_t {
 	int last_char_read;
 	bool use_last_char;
 	token_type* next_token_type;
+	int num;
 
 	//Reads in the next character using getchar and keeps track of
 	//the number of newlines that have been read
@@ -132,39 +161,41 @@ class scanner_t {
 
 token_type scanner_t::next_token()
 {
+/*
 	//WRITEME: replace this bogus junk with code that will take a peek
 	//at the next token and return it to the parser.  It should _not_
 	//actually consume a token - you should be able to call next_token()
 	//multiple times without actually reading any more tokens in 
 	if ( bogo_token!=T_plus && bogo_token!=T_eof ) return T_plus;
 	else return bogo_token;
+*/
 
-	if ( next_token_type != NULL)    //we already looked at the next token,
-		return *next_token_type; //so just return the same thing
+	if ( next_token_type != NULL )    //we already looked at the next token,
+		return *next_token_type;  //so just return the same thing
 
 	next_token_type = new token_type();
 	//If we are here, we haven't looked at the next token yet, so we
 	//must read characters until we know what the token is.
-	/*TODO: 
-		Call read_char and check for the simple ones first (eof,
- 		+,*,.,(,),/ then the harder ones: -, -> then the
-		hardest: num and figure out what the token is. Allocate
-		memory to store the string and store it in next_token_str  */
-	char c, d;
+	char c;
 	c = (use_last_char ? last_char_read : read_char());
 	while(isspace(c)) { c = read_char(); }
 	use_last_char = false;
 	// c should now be the first non-whitespace character of the
 	// next token
 	switch(c) {
+		case EOF: *next_token_type = T_eof; break;
 		case '+': *next_token_type = T_plus; break;
 		case '*': *next_token_type = T_times; break;
 		case '.': *next_token_type = T_period; break;
 		case '(': *next_token_type = T_openparen; break;
 		case ')': *next_token_type = T_closeparen; break;
 		case '/': *next_token_type = T_div; break;
+		case 'm': *next_token_type = T_m; break;
+		case '[': *next_token_type = T_openbracket; break;
+		case ']': *next_token_type = T_closebracket; break;
 		case '-': // could be - or ->
-			d = read_char();
+		{
+			char d = read_char();
 			if(d == '>')
 				*next_token_type = T_store;
 			else
@@ -178,8 +209,12 @@ token_type scanner_t::next_token()
 				use_last_char = true;
 			}
 			break;
-		case '0': //on 10/9 after class prof said we could decide whether
-			  //to accept leading zeros or not as valid numbers
+		}
+		case '0': //on 10/9 after class prof said we could decide
+			  //whether or not to accept integers with leading
+			  //zeros as valid numbers. I could interpret them
+			  //as octal, like C does, if I'm feeling really
+			  //ambitious
 		case '1':
 		case '2':
 		case '3':
@@ -189,17 +224,42 @@ token_type scanner_t::next_token()
 		case '7':
 		case '8':
 		case '9': //keep checking next char until it's not a digit
+		{
 			*next_token_type = T_num;
-			char num_string[MAX_SYMBOL_NAME_SIZE];
+			char num_string[MAX_DIGITS_IN_INT+1];
 			int i = 0;
 			do {
-				strncpy(num_string+i, &c, MAX_SYMBOL_NAME_SIZE);
+				strncpy(num_string+i, &c, 1);
 				c = read_char();
 				i++;
-			} while(c >= '0' && c <= '9' && i < 25);
-			//eventually call atoi on num_string to get
+			} while(c >= '0' && c <= '9' && i <= MAX_DIGITS_IN_INT);
+			if ( (i > MAX_DIGITS_IN_INT) ||
+			     (i == MAX_DIGITS_IN_INT && out_of_range(num_string)) )
+			{
+				num_string[i]='\0';
+				printf("range error: number starting with '%s' is greater than (2^31 - 1) -line %d\n",num_string, get_line());
+				exit(1);
+			}
+			//call atoi on num_string to get
 			//the actual number associated with this token
+			//(store it in a variable or something and have
+			//a get_num() fct that returns it...then just
+			//always call get_num() if the token was a T_num
+			//by default could make it -1 and if get_num
+			//returns a number < 0  we know we didn't actually
+			//get the number)
+			num = atoi(num_string);
+			//by the nature of the while loop, we read an extra
+			//character to make sure it wasn't another digit (which
+			//would've still been part of this number token), so we
+			//should use it as the first character of the next token
+			last_char_read = c;
+			use_last_char = true;
+			break;
+		}
+		default: scan_error(c);
 	}
+	return *next_token_type;
 }
 
 void scanner_t::eat_token(token_type c)
@@ -207,13 +267,17 @@ void scanner_t::eat_token(token_type c)
 	//if we are supposed to eat token c, and it does not match
 	//what we are supposed to be reading from file, then it is a 
 	//mismatch error ( call - mismatch_error(c) )
+	//if ( c != next_token() ) mismatch_error(c);
 
+/*
 	//WRITEME: cut this bogus stuff out and implement eat_token
 	if ( rand()%10 < 8 ) bogo_token = T_plus;
 	else bogo_token = T_eof;
+*/
 
 	//We just ate the token, so we have to call next_token() again
 	//to know what's next. Thus, we set next_token_type to NULL (it
+	//will be set to the next token type in the next call of
 	//will be set to the next token type in the next call of
 	//next_token() )
 	delete next_token_type;
@@ -224,6 +288,7 @@ scanner_t::scanner_t()
 {
 	//WRITEME
 	line = 1;
+	num = -1;
 	next_token_type = NULL;
 	use_last_char = false;
 }
@@ -234,6 +299,13 @@ int scanner_t::get_line()
 	return line;
 }
 
+int scanner_t::get_num()
+{
+	return num;
+	//could set num to be negative again here, but it might
+	//not be necessary...
+}
+
 int scanner_t::read_char()
 {
 	char c;
@@ -242,12 +314,30 @@ int scanner_t::read_char()
 	return c;
 }
 
+bool scanner_t::out_of_range(char* number_string)
+{
+	char num_string[MAX_DIGITS_IN_INT+1];
+	strncpy(num_string, number_string, MAX_DIGITS_IN_INT+1);
+	unsigned int num=0;
+	int index;
+	for(int i=0; i< MAX_DIGITS_IN_INT; i++)
+	{
+		index = MAX_DIGITS_IN_INT-i-1;
+		num += pow(10,i)*atoi(&num_string[index]);
+		num_string[index]='\0';
+	}
+	//printf("\tnum_string is: %s\n", number_string);
+	//printf("\tnum is: %u\n", num);
+	if(num > 2147483647) // this is 2^31 - 1
+		return true; // num is out_of_range;
+	//else, not out_of_range
+	return false;
+}
 
 void scanner_t::scan_error (char x)
 {
 	printf("scan error: unrecognized character '%c' -line %d\n",x, get_line());
 	exit(1);
-
 }
 
 void scanner_t::mismatch_error (token_type x)
@@ -409,6 +499,16 @@ class parser_t {
 	void List();
 	//WRITEME: fill this out with the rest of the 
 	//recursive decent stuff (more methods)
+	void ListPrime();
+	void Cmd();
+	void Args();
+	void Expr();
+	void ExprPrime();
+	void Term();
+	void TermPrime();
+	void Factor();
+	void match();
+	token_type lookahead;
 
   public:	
 	void parse();
@@ -435,7 +535,7 @@ void parser_t::syntax_error(nonterm_type nt)
 		token_to_string( scanner.next_token()),
 		nonterm_to_string(nt),
 		scanner.get_line() ); 
-	exit(1); 
+	exit(1);
 }
 
 
@@ -483,13 +583,70 @@ void parser_t::List()
 }
 
 //WRITEME: you will need to put the rest of the procedures here
-
+void parser_t::match()
+{
+	
+}
 
 /*** Main ***********************************************/
 
 int main()
 {
+/*
 	parser_t parser;
 	parser.parse();
+*/
+
+	printf("***hello. starting up\n\n");
+	scanner_t scanner;
+
+/*
+	printf("testing out_of_range\n");
+	char in_range[MAX_DIGITS_IN_INT+1]="1234567891";
+	char out_of_range[MAX_DIGITS_IN_INT+1]="4123456789";
+	char just_below[MAX_DIGITS_IN_INT+1]="2147483647";
+	char just_above[MAX_DIGITS_IN_INT+1]="2147483648";
+	printf("expect false\n");
+	if (scanner.out_of_range(in_range))
+		printf("result: true\n");
+	else
+		printf("result: false\n");
+
+	printf("expect true\n");
+	if (scanner.out_of_range(out_of_range))
+		printf("result: true\n");
+	else
+		printf("result: false\n");
+
+	printf("expect false\n");
+	if (scanner.out_of_range(just_below))
+		printf("result: true\n");
+	else
+		printf("result: false\n");
+
+	printf("expect true\n");
+	if (scanner.out_of_range(just_above))
+		printf("result: true\n");
+	else
+		printf("result: false\n");
+*/
+
+	token_type next_token = scanner.next_token();
+	int i = 1;
+	int line = scanner.get_line();
+	while(next_token != T_eof)
+	{
+		printf("line %i: ", line);
+		printf("token #%i is: %s", i, token_to_string(next_token));
+		if(next_token == T_num) printf("<%i>", scanner.get_num());
+		printf("\n");
+		scanner.eat_token(next_token);
+		next_token = scanner.next_token();
+		i++;
+		line = scanner.get_line();
+	}	
+	printf("token #%i is: %s", i, token_to_string(next_token));
+
+	printf("\n\n***goodbye. shutting down\n\n");
 	return 0;
 }
