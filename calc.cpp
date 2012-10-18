@@ -267,7 +267,7 @@ void scanner_t::eat_token(token_type c)
 	//if we are supposed to eat token c, and it does not match
 	//what we are supposed to be reading from file, then it is a 
 	//mismatch error ( call - mismatch_error(c) )
-	//if ( c != next_token() ) mismatch_error(c);
+	if ( c != next_token() ) mismatch_error(c);
 
 /*
 	//WRITEME: cut this bogus stuff out and implement eat_token
@@ -301,9 +301,9 @@ int scanner_t::get_line()
 
 int scanner_t::get_num()
 {
-	return num;
-	//could set num to be negative again here, but it might
-	//not be necessary...
+	temp = num;
+	num = -1;
+	return temp;
 }
 
 int scanner_t::read_char()
@@ -500,15 +500,13 @@ class parser_t {
 	//WRITEME: fill this out with the rest of the 
 	//recursive decent stuff (more methods)
 	void ListPrime();
-	void Cmd();
-	void Args();
-	void Expr();
-	void ExprPrime();
-	void Term();
-	void TermPrime();
-	void Factor();
-	void match();
-	token_type lookahead;
+	int Cmd();
+	int Args();
+	int Expr();
+	int ExprPrime();
+	int Term();
+	int TermPrime();
+	int Factor();
 
   public:	
 	void parse();
@@ -562,11 +560,15 @@ void parser_t::List()
 	//parse tree, and should in should have no effect the actual
 	//parsing of the data
 	parsetree.push(NT_List);
+	Cmd();
+	eat_token(T_period);
+	ListPrime();
 
+/*
 	switch( scanner.next_token() ) 
 	{
-		case T_plus:
-			eat_token(T_plus);
+		case T_num:
+			eat_token(T_num);
 			List();
 			break;
 		case T_eof:
@@ -576,6 +578,7 @@ void parser_t::List()
 			syntax_error(NT_List);
 			break;
 	}
+*/
 
 	//now that we are done with List, we can pop it from the data
 	//stucture that is tracking it for drawing the parse tree
@@ -583,24 +586,186 @@ void parser_t::List()
 }
 
 //WRITEME: you will need to put the rest of the procedures here
-void parser_t::match()
+void parser_t::ListPrime()
 {
-	
+	parsetree.push(NT_ListPrime);
+	switch ( scanner.next_token() )
+	{
+		case T_openparen:
+		case T_m:
+		case T_num:
+			Cmd();
+			eat_token(T_period);
+			ListPrime();
+			break;
+		case T_eof:
+			parsetree.drawepsilon();
+			break;
+		default:
+			syntax_error(NT_ListPrime);
+			break;
+	}
+	parsetree.pop();
+}
+
+void parser_t::Cmd()
+{
+	parsetree.push(NT_Cmd);
+	Expr();
+	Args();
+	parsetree.pop();
+}
+
+void parser_t::Args()
+{
+	parsetree.push(NT_Args);
+	switch ( scanner.next_token() )
+	{
+		case T_store:
+			eat_token(T_store);
+			eat_token(T_m);
+			eat_token(T_openbracket);
+			Expr();
+			eat_token(T_closebracket);
+			break;
+		case T_period:
+			parsetree.drawepsilon();
+			break;
+		default:
+			syntax_error(NT_Args);
+			break;
+	}
+	parsetree.pop();
+}
+
+void parser_t::Expr()
+{
+	parsetree.push(NT_Expr);
+	switch ( scanner.next_token() )
+	{
+		case T_openparen:
+		case T_m:
+		case T_num:
+			Term();
+			ExprPrime();
+			break;
+		default:
+			syntax_error(NT_Expr);
+			break;
+	}
+	parsetree.pop();
+}
+
+void parser_t::ExprPrime()
+{
+	parsetree.push(NT_ExprPrime);
+	switch ( scanner.next_token() )
+	{
+		case T_plus:
+			eat_token(T_plus);
+			Term();
+			ExprPrime();
+			break;
+		case T_minus:
+			eat_token(T_minus);
+			Term();
+			ExprPrime();
+			break;
+		case T_period:
+		case T_store:
+		case T_closeparen:
+		case T_closebracket:
+			parsetree.drawepsilon();
+			break;
+		default:
+			syntax_error(NT_ExprPrime);
+			break;
+	}
+	parsetree.pop();
+}
+
+void parser_t::Term()
+{
+	parsetree.push(NT_Term);
+	Factor();
+	TermPrime();
+	parsetree.pop();
+}
+
+void parser_t::TermPrime()
+{
+	parsetree.push(NT_TermPrime);
+	switch ( scanner.next_token() )
+	{
+		case T_times:
+			eat_token(T_times);
+			Factor();
+			TermPrime();
+			break;
+		case T_div:
+			eat_token(T_div);
+			Factor();
+			TermPrime();
+			break;
+		case T_plus:
+		case T_minus:
+		case T_period:
+		case T_store:
+		case T_closeparen:
+		case T_closebracket:
+			parsetree.drawepsilon();
+			break;
+		default:
+			syntax_error(NT_TermPrime);
+			break;
+	}
+	parsetree.pop();
+}
+
+void parser_t::Factor()
+{
+	int num;
+	parsetree.push(NT_Factor);
+	switch ( scanner.next_token() )
+	{
+		case T_openparen:
+			eat_token(T_openparen);
+			Expr();
+			eat_token(T_closeparen);
+			break;
+		case T_m:
+			eat_token(T_m);
+			eat_token(T_openbracket);
+			Expr();
+			eat_token(T_closebracket);
+			break;
+		case T_num:
+			num = scanner.get_num();
+			if(num<0)
+			{
+				printf("num was negative, something went terribly wrong!");
+				exit(1);
+			}
+			eat_token(T_num);
+			break;
+		default:
+			syntax_error(NT_Factor);
+			break;
+	}
+	parsetree.pop();
 }
 
 /*** Main ***********************************************/
 
 int main()
 {
-/*
 	parser_t parser;
 	parser.parse();
-*/
 
+/*
 	printf("***hello. starting up\n\n");
 	scanner_t scanner;
 
-/*
 	printf("testing out_of_range\n");
 	char in_range[MAX_DIGITS_IN_INT+1]="1234567891";
 	char out_of_range[MAX_DIGITS_IN_INT+1]="4123456789";
@@ -629,7 +794,6 @@ int main()
 		printf("result: true\n");
 	else
 		printf("result: false\n");
-*/
 
 	token_type next_token = scanner.next_token();
 	int i = 1;
@@ -648,5 +812,7 @@ int main()
 	printf("token #%i is: %s", i, token_to_string(next_token));
 
 	printf("\n\n***goodbye. shutting down\n\n");
+*/
+
 	return 0;
 }
