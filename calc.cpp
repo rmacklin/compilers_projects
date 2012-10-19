@@ -8,6 +8,8 @@
 #include <ctype.h>
 #include <stack>
 #include <math.h>
+#include <queue>
+#include <vector>
 
 using namespace std;
 
@@ -60,6 +62,16 @@ char* token_to_string(token_type c) {
 	return buffer;
 }
 
+//same as above but only for printing number tokens with their value
+char* token_to_string(token_type c, int num) {
+	static char buffer[MAX_SYMBOL_NAME_SIZE];
+	switch( c ) {
+		case T_num: strncpy(buffer,"<num, %i>",MAX_SYMBOL_NAME_SIZE); break;
+		default: strncpy(buffer,"unknown_token",MAX_SYMBOL_NAME_SIZE); break;
+	}
+	return buffer;
+}
+
 //all of the non-terminals in the grammar (you need to add these in
 //according to your grammar.. these are used for printing the thing out)
 //please follow the convention we set up so that we can tell what the heck you
@@ -69,6 +81,7 @@ typedef enum {
 	NT_List,
 	NT_Expr,
 	//WRITEME: add symbolic names for you non-terminals here
+	//Done
 	NT_ListPrime,
 	NT_Cmd,
 	NT_Args,
@@ -89,7 +102,8 @@ char* nonterm_to_string(nonterm_type nt)
 	switch( nt ) {
 		case epsilon: strncpy(buffer,"e",MAX_SYMBOL_NAME_SIZE); break;
 		case NT_List: strncpy(buffer,"List",MAX_SYMBOL_NAME_SIZE); break;
-		//WRITEME: add the other nonterminals you need here		
+		//WRITEME: add the other nonterminals you need here
+		//Done
 		case NT_Expr: strncpy(buffer,"Expr",MAX_SYMBOL_NAME_SIZE); break;
 		case NT_ListPrime: strncpy(buffer,"List'",MAX_SYMBOL_NAME_SIZE); break;
 		case NT_Cmd: strncpy(buffer,"Cmd",MAX_SYMBOL_NAME_SIZE); break;
@@ -138,6 +152,7 @@ class scanner_t {
 	//be a state machine or anything fancy.  Just read in the
 	//characters one at a time (using getchar would be a good way)
 	//and group them into tokens.
+	//Done
 	int line;
 	int last_char_read;
 	bool use_last_char;
@@ -169,6 +184,7 @@ token_type scanner_t::next_token()
 	if ( bogo_token!=T_plus && bogo_token!=T_eof ) return T_plus;
 	else return bogo_token;
 */
+	//Done
 
 	if ( next_token_type != NULL )    //we already looked at the next token,
 		return *next_token_type;  //so just return the same thing
@@ -274,6 +290,7 @@ void scanner_t::eat_token(token_type c)
 	if ( rand()%10 < 8 ) bogo_token = T_plus;
 	else bogo_token = T_eof;
 */
+	//Done
 
 	//We just ate the token, so we have to call next_token() again
 	//to know what's next. Thus, we set next_token_type to NULL (it
@@ -287,6 +304,7 @@ void scanner_t::eat_token(token_type c)
 scanner_t::scanner_t()
 {
 	//WRITEME
+	//Done
 	line = 1;
 	num = -1;
 	next_token_type = NULL;
@@ -296,12 +314,13 @@ scanner_t::scanner_t()
 int scanner_t::get_line()
 {
 	//WRITEME
+	//Done
 	return line;
 }
 
 int scanner_t::get_num()
 {
-	temp = num;
+	int temp = num;
 	num = -1;
 	return temp;
 }
@@ -358,6 +377,7 @@ void scanner_t::mismatch_error (token_type x)
 class parsetree_t {
   public:
 	void push(token_type t);
+	void push(token_type t, int num);
 	void push(nonterm_type nt);
 	void pop();
 	void drawepsilon();
@@ -375,9 +395,12 @@ class parsetree_t {
 		stype_t stype; 
 		int uniq;
 	};
+
 	void printedge(stuple temp); //prints edge from TOS->temp
+	void printedge(stuple temp, int num); //prints edge from TOS->temp with num value
 	stack<stuple> stuple_stack;
 	char* stuple_to_string(const stuple& s); 
+	char* stuple_to_string(const stuple& s, int num); 
 	int counter;
 };
 
@@ -416,6 +439,24 @@ void parsetree_t::push(token_type t)
 	temp.stype = TERMINAL;
 	temp.uniq = counter;
 	printedge( temp );
+	stuple_stack.push( temp );
+}
+
+//same as above, but modified for number terminals to print their value
+void parsetree_t::push(token_type t, int num)
+{
+	counter ++;
+	stuple temp;
+	if ( t != T_num )
+	{
+		printf("why did you call this you FOOL! this is only for printing nums!\n");
+		assert(0);
+	}
+	temp.t = t;
+	temp.stype = TERMINAL;
+	temp.uniq = counter;
+	printedge( temp, num );
+	//stuple_stack.push( temp, num );
 	stuple_stack.push( temp );
 }
 
@@ -465,6 +506,33 @@ void parsetree_t::printedge(stuple temp)
 	}
 }
 
+// this modified private print function is called from the modified push. Basically it
+// just prints out the command to draw an edge from the top of the stack (TOS)
+// to the new symbol that was just pushed.  If it happens to be a terminal
+// then it makes it a snazzy blue color so you can see your program on the leaves. It
+// should only be used to print the num terminal with its value (hence the int parameter)
+void parsetree_t::printedge(stuple temp, int num)
+{
+	if ( temp.stype == TERMINAL && temp.t == T_num ) {
+		printf("\t\"%s%d\" [label=\"%s\",style=filled,fillcolor=powderblue]\n",
+		  stuple_to_string(temp, num),
+		  temp.uniq,
+		  stuple_to_string(temp, num));
+	}
+	else
+	{
+		printf("why did you call this you FOOL! this is only for printing nums!\n");
+		assert(0);
+	}
+
+	//no edge to print if this is the first node
+	if ( !stuple_stack.empty() ) {
+		//print the edge
+		printf( "\t\"%s%d\" ", stuple_to_string(stuple_stack.top()), stuple_stack.top().uniq ); 
+		printf( "-> \"%s%d\"\n", stuple_to_string(temp), temp.uniq );
+	}
+}
+
 //just a private utility for helping with the printing of the dot stuff
 char* parsetree_t::stuple_to_string(const stuple& s) 
 {
@@ -474,6 +542,21 @@ char* parsetree_t::stuple_to_string(const stuple& s)
 	} else if ( s.stype == NONTERMINAL ) {
 		snprintf( buffer, MAX_SYMBOL_NAME_SIZE, "%s", nonterm_to_string(s.nt) );
 	} else {
+		assert(0);
+	}
+
+	return buffer;
+}
+
+//modified private utility for helping with the printing of nums in the dot stuff
+char* parsetree_t::stuple_to_string(const stuple& s, int num) 
+{
+	static char buffer[MAX_SYMBOL_NAME_SIZE];
+	if ( s.stype == TERMINAL && s.t == T_num )
+		snprintf( buffer, MAX_SYMBOL_NAME_SIZE, "<%s, %i>", token_to_string(s.t), num );
+	else
+	{
+		printf("why did you call this you FOOL! this is only for printing nums!\n");
 		assert(0);
 	}
 
@@ -493,25 +576,58 @@ class parser_t {
   private:
 	scanner_t scanner;
 	parsetree_t parsetree;
+
+	//struct to store operators and operands that will
+	//help with evaluating expressions
+	struct calc_token {
+		token_type t;
+		int num_val;
+		calc_token() { num_val = -2; }
+	};
+
+	//useful data structures for helping with expression evaluations
+	stack<token_type> operator_stack;
+	queue<calc_token> output_queue;
+	vector<int> memory;
+
 	void eat_token(token_type t);
+	void eat_token(token_type t, int num);
+
+	int read_mem(int location);
+	void store_to_mem(int value, int location);
+	void stack_queue_manage(token_type tok, int num = -3);
+	bool is_operator(token_type t);
+	int op_precedence(token_type op);
+
 	void syntax_error(nonterm_type);
+	void negative_error(int num);
 
 	void List();
 	//WRITEME: fill this out with the rest of the 
 	//recursive decent stuff (more methods)
+	//Done
 	void ListPrime();
 	int Cmd();
-	int Args();
+	void Args();
 	int Expr();
-	int ExprPrime();
-	int Term();
-	int TermPrime();
-	int Factor();
+	void ExprPrime();
+	void Term();
+	void TermPrime();
+	void Factor();
 
-  public:	
+  public:
+	parser_t();	
 	void parse();
 };
 
+parser_t::parser_t()
+{
+	//initially memory will have size 1024 with all its
+	//values initialized to 0. It grows as needed if an
+	//expression/command tries to access/store to an index
+	//outside this range.
+	memory.resize(1024,0);
+}
 
 //this function not only eats the token (moving the scanner forward one
 //token), it also makes sure that token is drawn in the parse tree 
@@ -521,6 +637,99 @@ void parser_t::eat_token(token_type t)
 	parsetree.push(t);
 	scanner.eat_token(t);
 	parsetree.pop();
+}
+
+//same as above, but modified so it prints the value of a num token in the tree
+void parser_t::eat_token(token_type t, int num)
+{
+	if ( t != T_num )
+	{
+		printf("why did you call this you FOOL! this is only for printing nums!\n");
+		assert(0);
+	}
+	parsetree.push(t, num);
+	scanner.eat_token(t);
+	parsetree.pop();
+}
+
+//get the value from memory[location]
+int parser_t::read_mem(int location)
+{
+	if ( location >= memory.size() )
+		memory.resize(location+1, 0);
+	return memory[location];
+}
+
+//store value to memory[location]
+//the arguments are in this order because that is how they are in the
+//language we are parsing, e.g. 3 * 4 - 2 -> m[3+4/3].
+void parser_t::store_to_mem(int value, int location)
+{
+	if ( location >= memory.size() )
+		memory.resize(location+1, 0);
+	memory[location] = value;
+}
+
+void parser_t::stack_queue_manage(token_type tok, int num)
+{
+	calc_token ct;
+	ct.t = tok;
+	token_type tos;
+	//@@@WRITEME: MAKE THIS HANDLE EVERYTHING IN THE WIKI ARTICLE
+	if ( is_operator(tok) )
+	{
+		//manage the operator stack
+		while ( !operator_stack.empty() )
+		{
+			tos = operator_stack.top();
+			if ( op_precedence(tok) <= op_precedence(tos) )
+			{
+				operator_stack.pop();
+				ct.t = tos;
+				ct.num_val = -4;
+				output_queue.push(ct);
+			}
+			else break; // don't pop the rest of the operators on the stack
+			// if tok has a higher precedence than tos (top of stack)
+		}
+		operator_stack.push(tok);
+	}
+	else
+	{
+		if ( tok == T_num )
+		{
+			//manage the output queue
+			if ( num < 0 ) negative_error(num);
+			ct.num_val = num;
+			output_queue.push(ct);
+		}
+		else
+		{
+			printf("why are you calling this and passing in an irrelevant token?!?!\n");
+			exit(1);
+		}
+	}
+}
+
+bool parser_t::is_operator(token_type t)
+{
+	return ( t == T_plus || t == T_minus || t == T_times || t == T_div );
+}
+
+int parser_t::op_precedence(token_type op)
+{
+	switch ( op )
+	{
+		case T_times:
+		case T_div:
+			return 2;
+		case T_plus:
+		case T_minus:
+			return 1;
+		default:
+			printf("why are you calling this and not passing an operator?!?!?!\n");
+			exit(1);
+	}
 }
 
 //call this syntax error when you are trying to parse the
@@ -536,6 +745,21 @@ void parser_t::syntax_error(nonterm_type nt)
 	exit(1);
 }
 
+//call this error if a number result is negative, since all results are supposed
+//to be in the range 0 to 2^31 - 1.
+void parser_t::negative_error(int num)
+{
+	if ( num < 0 )
+	{
+		printf("num was negative: %i, something went terribly wrong!\n", num);
+		exit(1);
+	}
+	else
+	{
+		printf("why the hell did you call negative_error, %i is not negative!\n", num);
+		exit(1);
+	}
+}
 
 //One the recursive decent parser is set up, you simply call parse()
 //to parse the entire input, all of which can be dirived from the start
@@ -563,22 +787,7 @@ void parser_t::List()
 	Cmd();
 	eat_token(T_period);
 	ListPrime();
-
-/*
-	switch( scanner.next_token() ) 
-	{
-		case T_num:
-			eat_token(T_num);
-			List();
-			break;
-		case T_eof:
-			parsetree.drawepsilon();
-			break;
-		default:
-			syntax_error(NT_List);
-			break;
-	}
-*/
+	eat_token(T_eof);
 
 	//now that we are done with List, we can pop it from the data
 	//stucture that is tracking it for drawing the parse tree
@@ -589,12 +798,14 @@ void parser_t::List()
 void parser_t::ListPrime()
 {
 	parsetree.push(NT_ListPrime);
+	int evaluated_result;
 	switch ( scanner.next_token() )
 	{
 		case T_openparen:
 		case T_m:
 		case T_num:
-			Cmd();
+			evaluated_result = Cmd();
+			fprintf(stderr, "%i\n", evaluated_result);
 			eat_token(T_period);
 			ListPrime();
 			break;
@@ -608,24 +819,27 @@ void parser_t::ListPrime()
 	parsetree.pop();
 }
 
-void parser_t::Cmd()
+int parser_t::Cmd()
 {
 	parsetree.push(NT_Cmd);
-	Expr();
+	int res = Expr();
 	Args();
 	parsetree.pop();
+	return res;
 }
 
 void parser_t::Args()
 {
+	int location;
 	parsetree.push(NT_Args);
 	switch ( scanner.next_token() )
 	{
 		case T_store:
+			//@@@WRITEME: deal with storing the value to mem in this block
 			eat_token(T_store);
 			eat_token(T_m);
 			eat_token(T_openbracket);
-			Expr();
+			location = Expr();
 			eat_token(T_closebracket);
 			break;
 		case T_period:
@@ -638,7 +852,7 @@ void parser_t::Args()
 	parsetree.pop();
 }
 
-void parser_t::Expr()
+int parser_t::Expr()
 {
 	parsetree.push(NT_Expr);
 	switch ( scanner.next_token() )
@@ -653,6 +867,53 @@ void parser_t::Expr()
 			syntax_error(NT_Expr);
 			break;
 	}
+
+	//@@@WRITEME: DO THE STACK/QUEUE STUFF TO EVAL IT!!!!!!! & return result
+	//at this point the recursive calls should have put the relevant tokens
+	//in our operator_stack and out_put queue that are needed to evaluate
+	//this particular expression. so go ahead and evaluate it:
+	while ( !operator_stack.empty() )
+	{
+		calc_token ct;
+		ct.t = operator_stack.top();
+		output_queue.push(ct);
+		operator_stack.pop();
+	}
+	//everything is now in the output_queue in postfix notation, so we can
+	//calculate it and the associativity should be correct!
+	int o1, o2; //operands
+	token_type op; //operator
+	stack<calc_token> stack;
+	calc_token front;
+	while ( !output_queue.empty() )
+	{
+		front = output_queue.front();
+		if ( front.t == T_num )
+		{
+			if ( front.num_val < 0 ) negative_error(front.num_val);
+			stack.push(front);
+		}
+		if ( is_operator(front.t) )
+		{
+			if ( stack.size() < 2 )
+			{
+				printf("encountered an operator without 2 operands. ABORT!!!\n");
+				exit(1);
+			}
+			o2 = stack.top().num_val;
+			stack.pop();
+			o1 = stack.top().num_val;
+			stack.pop();
+			op = front.t;
+			//evaluate o1 (op) o2
+			retval = calculate(o1,op,o2);
+			calc_token calc_tok;
+			calc_tok.t = T_num;
+			calc_tok.num_val = retval;
+			push
+		}
+	}
+	
 	parsetree.pop();
 }
 
@@ -663,11 +924,13 @@ void parser_t::ExprPrime()
 	{
 		case T_plus:
 			eat_token(T_plus);
+			stack_queue_manage(T_plus);
 			Term();
 			ExprPrime();
 			break;
 		case T_minus:
 			eat_token(T_minus);
+			stack_queue_manage(T_minus);
 			Term();
 			ExprPrime();
 			break;
@@ -699,11 +962,13 @@ void parser_t::TermPrime()
 	{
 		case T_times:
 			eat_token(T_times);
+			stack_queue_manage(T_times);
 			Factor();
 			TermPrime();
 			break;
 		case T_div:
 			eat_token(T_div);
+			stack_queue_manage(T_div);
 			Factor();
 			TermPrime();
 			break;
@@ -719,6 +984,7 @@ void parser_t::TermPrime()
 			syntax_error(NT_TermPrime);
 			break;
 	}
+
 	parsetree.pop();
 }
 
@@ -730,28 +996,30 @@ void parser_t::Factor()
 	{
 		case T_openparen:
 			eat_token(T_openparen);
-			Expr();
+			num = Expr();
 			eat_token(T_closeparen);
 			break;
 		case T_m:
 			eat_token(T_m);
 			eat_token(T_openbracket);
-			Expr();
+			num = Expr();
+			if ( num < 0 ) negative_error(num);
 			eat_token(T_closebracket);
+			num = read_mem(num);
 			break;
 		case T_num:
 			num = scanner.get_num();
-			if(num<0)
-			{
-				printf("num was negative, something went terribly wrong!");
-				exit(1);
-			}
 			eat_token(T_num);
+			//eat_token(T_num, num); // this one will print the actual value in the tree
 			break;
 		default:
 			syntax_error(NT_Factor);
 			break;
 	}
+
+	if ( num < 0 ) negative_error(num);
+	stack_queue_manage(T_num, num);
+	
 	parsetree.pop();
 }
 
@@ -761,58 +1029,6 @@ int main()
 {
 	parser_t parser;
 	parser.parse();
-
-/*
-	printf("***hello. starting up\n\n");
-	scanner_t scanner;
-
-	printf("testing out_of_range\n");
-	char in_range[MAX_DIGITS_IN_INT+1]="1234567891";
-	char out_of_range[MAX_DIGITS_IN_INT+1]="4123456789";
-	char just_below[MAX_DIGITS_IN_INT+1]="2147483647";
-	char just_above[MAX_DIGITS_IN_INT+1]="2147483648";
-	printf("expect false\n");
-	if (scanner.out_of_range(in_range))
-		printf("result: true\n");
-	else
-		printf("result: false\n");
-
-	printf("expect true\n");
-	if (scanner.out_of_range(out_of_range))
-		printf("result: true\n");
-	else
-		printf("result: false\n");
-
-	printf("expect false\n");
-	if (scanner.out_of_range(just_below))
-		printf("result: true\n");
-	else
-		printf("result: false\n");
-
-	printf("expect true\n");
-	if (scanner.out_of_range(just_above))
-		printf("result: true\n");
-	else
-		printf("result: false\n");
-
-	token_type next_token = scanner.next_token();
-	int i = 1;
-	int line = scanner.get_line();
-	while(next_token != T_eof)
-	{
-		printf("line %i: ", line);
-		printf("token #%i is: %s", i, token_to_string(next_token));
-		if(next_token == T_num) printf("<%i>", scanner.get_num());
-		printf("\n");
-		scanner.eat_token(next_token);
-		next_token = scanner.next_token();
-		i++;
-		line = scanner.get_line();
-	}	
-	printf("token #%i is: %s", i, token_to_string(next_token));
-
-	printf("\n\n***goodbye. shutting down\n\n");
-*/
 
 	return 0;
 }
