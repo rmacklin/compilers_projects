@@ -226,11 +226,7 @@ token_type scanner_t::next_token()
 			}
 			break;
 		}
-		case '0': //on 10/9 after class prof said we could decide
-			  //whether or not to accept integers with leading
-			  //zeros as valid numbers. I could interpret them
-			  //as octal, like C does, if I'm feeling really
-			  //ambitious
+		case '0': //Professor Sherwood said we can accept leading 0s
 		case '1':
 		case '2':
 		case '3':
@@ -256,14 +252,6 @@ token_type scanner_t::next_token()
 				printf("range error: number starting with '%s' is greater than (2^31 - 1) -line %d\n",num_string, get_line());
 				exit(1);
 			}
-			//call atoi on num_string to get
-			//the actual number associated with this token
-			//(store it in a variable or something and have
-			//a get_num() fct that returns it...then just
-			//always call get_num() if the token was a T_num
-			//by default could make it -1 and if get_num
-			//returns a number < 0  we know we didn't actually
-			//get the number)
 			num = atoi(num_string);
 			//by the nature of the while loop, we read an extra
 			//character to make sure it wasn't another digit (which
@@ -345,8 +333,6 @@ bool scanner_t::out_of_range(char* number_string)
 		num += pow(10,i)*atoi(&num_string[index]);
 		num_string[index]='\0';
 	}
-	//printf("\tnum_string is: %s\n", number_string);
-	//printf("\tnum is: %u\n", num);
 	if(num > 2147483647) // this is 2^31 - 1
 		return true; // num is out_of_range;
 	//else, not out_of_range
@@ -598,9 +584,10 @@ class parser_t {
 	void stack_queue_manage(token_type tok, int num = -3);
 	bool is_operator(token_type t);
 	int op_precedence(token_type op);
+	int calculate(int o1, token_type op, int o2);
 
 	void syntax_error(nonterm_type);
-	void negative_error(int num);
+	void negative_index(int index);
 
 	void List();
 	//WRITEME: fill this out with the rest of the 
@@ -608,7 +595,7 @@ class parser_t {
 	//Done
 	void ListPrime();
 	int Cmd();
-	void Args();
+	int Args();
 	int Expr();
 	void ExprPrime();
 	void Term();
@@ -675,7 +662,8 @@ void parser_t::stack_queue_manage(token_type tok, int num)
 	calc_token ct;
 	ct.t = tok;
 	token_type tos;
-	//@@@WRITEME: MAKE THIS HANDLE EVERYTHING IN THE WIKI ARTICLE
+	//implements a kind of shunting yard algorithm to handle
+	//the evaluation of operations
 	if ( is_operator(tok) )
 	{
 		//manage the operator stack
@@ -699,7 +687,7 @@ void parser_t::stack_queue_manage(token_type tok, int num)
 		if ( tok == T_num )
 		{
 			//manage the output queue
-			if ( num < 0 ) negative_error(num);
+			//if ( num < 0 ) negative_error(num);
 			ct.num_val = num;
 			output_queue.push(ct);
 		}
@@ -732,6 +720,28 @@ int parser_t::op_precedence(token_type op)
 	}
 }
 
+int parser_t::calculate(int o1, token_type op, int o2)
+{
+	switch ( op )
+	{
+		case T_times:
+			return o1 * o2;
+		case T_div:
+			if ( o2 == 0 )
+			{
+				printf("division by zero error - line %i\n", scanner.get_line());
+				exit(1);
+			}
+			return o1 / o2; //integer division, as required by the project description
+		case T_plus:
+			return o1 + o2;
+		case T_minus:
+			return o1 - o2;
+		default:
+			return -5;
+	}
+}
+
 //call this syntax error when you are trying to parse the
 //non-terminal nt, but you fail to find a token that you need
 //to make progress.  You should call this as soon as you can know
@@ -747,22 +757,19 @@ void parser_t::syntax_error(nonterm_type nt)
 
 //call this error if a number result is negative, since all results are supposed
 //to be in the range 0 to 2^31 - 1.
-void parser_t::negative_error(int num)
+void parser_t::negative_index(int index)
 {
-	if ( num < 0 )
+	if ( index < 0 )
 	{
-		printf("num was negative: %i, something went terribly wrong!\n", num);
+		printf("memory index has negative value: %i\n", index);
 		exit(1);
 	}
-	else
-	{
-		printf("why the hell did you call negative_error, %i is not negative!\n", num);
-		exit(1);
-	}
+	printf("why the hell did you call negative_index, %i is not negative!\n", index);
+	exit(1);
 }
 
-//One the recursive decent parser is set up, you simply call parse()
-//to parse the entire input, all of which can be dirived from the start
+//Once the recursive decent parser is set up, you simply call parse()
+//to parse the entire input, all of which can be derived from the start
 //symbol
 void parser_t::parse()
 {
@@ -775,16 +782,19 @@ void parser_t::parse()
 //which is not a very interesting language.  It has been included
 //so you can see the basics of how to structure your recursive 
 //decent code.
+//Done
 
 //Here is an example
 void parser_t::List()
 {
+	int evaluated_result;
 	//push this non-terminal onto the parse tree.
 	//the parsetree class is just for drawing the finished
 	//parse tree, and should in should have no effect the actual
 	//parsing of the data
 	parsetree.push(NT_List);
-	Cmd();
+	evaluated_result = Cmd();
+	fprintf(stderr, "%i\n", evaluated_result);
 	eat_token(T_period);
 	ListPrime();
 	eat_token(T_eof);
@@ -823,19 +833,26 @@ int parser_t::Cmd()
 {
 	parsetree.push(NT_Cmd);
 	int res = Expr();
-	Args();
+	int location = Args();
+	if( location != - 666 )
+	{
+		if ( location < 0 ) negative_index(location);
+		// res -> m[location]
+		store_to_mem(res, location);
+	}
 	parsetree.pop();
 	return res;
 }
 
-void parser_t::Args()
+//returns the location of memory we are going to store to, or -666 if we don't
+//encounter a store operator next (i.e. we take the epsilon production instead)
+int parser_t::Args()
 {
-	int location;
+	int location = -666;
 	parsetree.push(NT_Args);
 	switch ( scanner.next_token() )
 	{
 		case T_store:
-			//@@@WRITEME: deal with storing the value to mem in this block
 			eat_token(T_store);
 			eat_token(T_m);
 			eat_token(T_openbracket);
@@ -850,6 +867,7 @@ void parser_t::Args()
 			break;
 	}
 	parsetree.pop();
+	return location;
 }
 
 int parser_t::Expr()
@@ -868,10 +886,9 @@ int parser_t::Expr()
 			break;
 	}
 
-	//@@@WRITEME: DO THE STACK/QUEUE STUFF TO EVAL IT!!!!!!! & return result
 	//at this point the recursive calls should have put the relevant tokens
-	//in our operator_stack and out_put queue that are needed to evaluate
-	//this particular expression. so go ahead and evaluate it:
+	//in our operator_stack and output_queue that are needed to evaluate
+	//this particular expression. so go ahead start evaluating it:
 	while ( !operator_stack.empty() )
 	{
 		calc_token ct;
@@ -879,42 +896,55 @@ int parser_t::Expr()
 		output_queue.push(ct);
 		operator_stack.pop();
 	}
+	
 	//everything is now in the output_queue in postfix notation, so we can
 	//calculate it and the associativity should be correct!
 	int o1, o2; //operands
 	token_type op; //operator
-	stack<calc_token> stack;
+	stack<int> operand_stack;
 	calc_token front;
 	while ( !output_queue.empty() )
 	{
 		front = output_queue.front();
 		if ( front.t == T_num )
 		{
-			if ( front.num_val < 0 ) negative_error(front.num_val);
-			stack.push(front);
+			//if ( front.num_val < 0 ) negative_error(front.num_val);
+			operand_stack.push(front.num_val);
 		}
 		if ( is_operator(front.t) )
 		{
-			if ( stack.size() < 2 )
+			if ( operand_stack.size() < 2 )
 			{
 				printf("encountered an operator without 2 operands. ABORT!!!\n");
 				exit(1);
 			}
-			o2 = stack.top().num_val;
-			stack.pop();
-			o1 = stack.top().num_val;
-			stack.pop();
+			o2 = operand_stack.top();
+			operand_stack.pop();
+			o1 = operand_stack.top();
+			operand_stack.pop();
+//			if ( o1 < 0 ) negative_error(o1);
+//			if ( o2 < 0 ) negative_error(o2);
 			op = front.t;
 			//evaluate o1 (op) o2
-			retval = calculate(o1,op,o2);
-			calc_token calc_tok;
-			calc_tok.t = T_num;
-			calc_tok.num_val = retval;
-			push
+			int evaluation = calculate(o1, op, o2);
+//			if ( evaluation < 0) negative_error(evaluation);
+			operand_stack.push(evaluation);
 		}
+		output_queue.pop();
 	}
-	
+	//the result should be the only element on the stack, so return it
+	int size = operand_stack.size();
+	if ( size != 1 )
+	{
+		printf("operand stack has %i items when it should contain exactly one (the final result). ABORT!!!\n", size);
+		exit(1);
+	}
+
 	parsetree.pop();
+	int result = operand_stack.top();
+	operand_stack.pop();
+printf("expression evaluated to: %i\n", result);
+	return result;
 }
 
 void parser_t::ExprPrime()
@@ -1003,7 +1033,7 @@ void parser_t::Factor()
 			eat_token(T_m);
 			eat_token(T_openbracket);
 			num = Expr();
-			if ( num < 0 ) negative_error(num);
+			if ( num < 0 ) negative_index(num);
 			eat_token(T_closebracket);
 			num = read_mem(num);
 			break;
@@ -1017,7 +1047,7 @@ void parser_t::Factor()
 			break;
 	}
 
-	if ( num < 0 ) negative_error(num);
+//	if ( num < 0 ) negative_error(num);
 	stack_queue_manage(T_num, num);
 	
 	parsetree.pop();
