@@ -10,9 +10,9 @@ test_def: calc_def
 	./calc_def < test.bad.calc > test.bad.defoutput
 test_parse: calc
 	./calc < test.good.calc > test.good.dot
-	./calc < test.bad.calc > test.bad.dot
 	dot -Tps test.good.dot > test.good.ps
 	ps2pdf test.good.ps test.good.pdf
+	./calc < test.bad.calc > test.bad.dot
 
 
 ###############################################
